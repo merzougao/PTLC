@@ -14,9 +14,11 @@ inductive list (T : Type): Type
 notation "[]" => list.nil
 notation t","l => list.append t l
 
-inductive not_in (t : T) : list T → Prop
-  | nil : not_in t []
-  | next : (t ≠ t₀) → not_in t l → not_in t (t₀ , l)
+inductive in_list (t : T) : list T → Prop
+  | cons : (t = t₀) → in_list t (t₀ , l)
+
+def not_in : T → list T → Prop :=
+  λt => λl => ¬ (in_list t l)
 
 inductive no_duplicates (T : Type) : list T → Prop
   | nil : no_duplicates T nil
@@ -30,7 +32,16 @@ def list₀ : list Nat := (0 , (1 , []))
 example : no_duplicates Nat list₀ := by
   unfold list₀
   apply no_duplicates.head
-  apply not_in.next
-  simp
-  apply not_in.nil
+  unfold not_in
+  intro p
+  cases p
+  case a.cons r =>
+    injection r
+
 --------------------------------------------------------
+
+structure Dep (l : list T) where
+  src : T
+  dest : T
+
+def well_formed_dep : Dep l → Prop := λd => (in_list d.src l) ∧ (in_list d.dest l)

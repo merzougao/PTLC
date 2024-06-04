@@ -12,7 +12,7 @@ notation A"->"B => typ.arrow A B
 -- We define terms in a recursive manner --
 inductive term : Type
   | var : Nat → term            -- Each variables is identitifed by a natural number
-  | abs : Nat → term → term     -- Lambda abstraction
+  | abs : term → term → term    -- Lambda abstraction
   | app : term → term → term    -- Application
 
 notation "$"n => term.var n
@@ -63,7 +63,7 @@ notation t"[" u "//" n"]" => subst n t u
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
   | var :(n:Nat) → (T : typ) → TR ((n∶T) , []) ($ n) T
-  | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (term.abs n t) (A -> B)
+  | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (term.abs ($ n) t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ (term.app t₀ t₁) B
   | sub : (A : typ) → (n:Nat) → (t u : term) → TR Γ t A → TR Γ (t[u // n]) A
 
@@ -73,15 +73,52 @@ notation Γ"⊢"t"∶∶"A => TR Γ t A
 example : ctx1 ⊢ ($ 3) ∶∶ typ.base := by
   apply TR.var
 
--- We define the beta reduction relation here --
-inductive beta : term → term → Type
-  | cons : beta (term.app (term.abs n t) u) (t[u // n])
+-- We define the α equivalence here, two terms are equivalent up to renaming of the bound variables --
+-- We start by defining variable swap --
+def rename : Nat → term → term := by
+  intros n t
+  cases t
+  case var m => exact $ m
+  case abs k u => exact term.abs ($ n) (rename n u)
+  case app u v => exact term.app (rename n u) (rename n v)
 
--- We prove that betw reduction preserve the typing relation --
-theorem beta_preservation : (A : typ) → (Γ ⊢ t ∶∶ A) → beta t t' → (Γ ⊢ t' ∶∶ A) := by
+def var_swap : Nat → Nat → term → term := by
+  intros n m t
+  cases t
+  case var k => exact if k = n then ($ m) else (if k = m then ($ n) else ($ k))
+  case abs k u => exact term.abs (var_swap n m k) (var_swap n m u)
+  case app u v => exact term.app (var_swap n m u) (var_swap n m v)
+
+-- Now the α equivalence, it is an equivalence relation up to renaming bound variables in abstraction --
+-- Note that this equivalence is weaker than the one we want because there is no well typed restriction here --
+
+inductive αeq : term → term → Type
+  | refl : αeq t t
+  | trans : αeq t q → αeq q r → αeq t r
+  | comm : αeq t q  → αeq q t
+  | abs (n : Nat) (t : term) : αeq (term.abs ($ n) t) (rename n (term.abs ($ n) t))
+
+-- We define the beta reduction relation here --
+-- We first start with a one step reduction --
+inductive β₁ : term → term → Type
+  | cons (n : Nat) : β₁ (term.app (term.abs ($ n) t) u) (t[u // n])
+
+-- Now we define the beta reduction relation to be transitive closure of beta₁ --
+inductive  β : term → term → Type
+  | id : β₁ t₀ t₁ → β t₀ t₁
+  | cons : β₁ t₀ t₁ → β₁ t₁ t₂ → β t₀ t₂
+
+-- We define now the beta equivalence relation to be the reflexive closure of beta --
+inductive βeq : term → term → Type
+  | id : β t₀ t₁ → βeq t₀ t₁
+  | refl : βeq t₀ t₁ → βeq t₁ t₀
+
+
+-- We prove that beta reduction preserve the typing relation --
+theorem beta_preservation : (A : typ) → (Γ ⊢ t ∶∶ A) → βeq t t' → (Γ ⊢ t' ∶∶ A) := by
   intro A p b
   induction p
-  case var n T => contradiction
+  case var n T => sorry
   case abs B C n Γ₀ t₀ q₀ q₁  => sorry
   case app B C Γ₀ t₀ t₁ d₀ q₀ q₁ q₂ => sorry
   case sub B n t₀ u₀ d₀ q₀ q₁ => sorry

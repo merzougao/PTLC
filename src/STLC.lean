@@ -56,7 +56,15 @@ example : no_duplicates ctx_elem ctx1 := by
 
 -- We define substitution of the term u for the variable named n in the term t --
 def subst : Nat → term → term → term := by
-  sorry
+  intros n t u
+  cases t
+  case var k => exact if k = n then u else $ k
+  case abs x q =>
+    cases x
+    case var k => exact term.abs (subst n ($ k) u) (subst n q u)
+    case abs t₀ t₁ => exact term.abs (term.abs t₀ t₁) q           -- Note that this case is not possible for well typed terms --
+    case app t₀ t₁ => exact term.abs (term.app t₀ t₁) q           -- Note that this case is not possible for well typed terms --
+  case app t₀ t₁ => exact term.app (subst n t₀ u) (subst n t₁ u)
 
 notation t"[" u "//" n"]" => subst n t u
 
@@ -97,6 +105,12 @@ inductive αeq : term → term → Type
   | trans : αeq t q → αeq q r → αeq t r
   | comm : αeq t q  → αeq q t
   | abs (n : Nat) (t : term) : αeq (term.abs ($ n) t) (rename n (term.abs ($ n) t))
+
+
+-- Substitution preserves alpha equivalence --
+theorem alpha_preservation : αeq t₀ t₁ → αeq (t₀ [ x // u ]) t₁ := by
+  intro p
+  sorry
 
 -- We define the beta reduction relation here --
 -- We first start with a one step reduction --

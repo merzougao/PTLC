@@ -4,10 +4,8 @@ import Init.Data.Nat.Basic
 inductive typ : Type
   | base : typ
   | arrow : typ → typ → typ
-
 -- Conveniance notations --
 notation A"->"B => typ.arrow A B
-
 
 -- We define terms in a recursive manner --
 inductive term : Type
@@ -41,15 +39,42 @@ inductive ctx : Type
 notation "[]" => ctx.nil
 notation t","Γ => ctx.append t Γ
 
-def ctx1 : ctx := (3∶typ.base) , []
+def fresh_var : ctx → Nat := by
+  intro Γ
+  cases Γ
+  case nil => exact 0
+  case append elem Γ => exact elem.name + 1 + fresh_var Γ
 
-inductive not_in : Nat → ctx → Prop
-  | nil : not_in n []
-  | cons : n ≠ m → not_in m Γ → not_in m ((n∶A) , Γ)
+inductive in_context : Nat → ctx → Prop
+  | init (n : Nat) (c : ctx_elem) (Γ : ctx) : n = c.name → in_context n (c , Γ)
+  | next (n : Nat) (t : ctx_elem) (Γ : ctx) : (n ≠ t.name) → in_context n Γ → in_context n (t , Γ)
 
-inductive valid_ctx : ctx → Prop
-  | nil : valid_ctx []
-  | cons : valid_ctx Γ → not_in n Γ → valid_ctx ((n∶A) , Γ)
+-- Count the number of elements in the context sharing the same name --
+inductive count : Nat → Nat → ctx → Type
+  | nil   : count 0 c []
+  | next_yes  : count n m Γ → m = c.name → count (n+1) m (c ,Γ)
+  | next_no  :  count n m Γ → m ≠ c.name → count n m (c ,Γ)
+
+notation c"∈"Γ => in_context c Γ
+notation c"∉"Γ => ¬ in_context c Γ
+
+example : count 0 3 [] := by apply count.nil
+example : count 1 3 ((3∶typ.base) , []) := by
+  apply count.next_yes
+  apply count.nil
+  rfl
+example : count 1 3 ((4∶typ.base) , ((3∶typ.base) , [])) := by
+  apply count.next_no
+  case a =>
+    apply count.next_yes
+    apply count.nil
+    rfl
+  case a =>
+    intro p
+    contradiction
+example : 3 ∈ ((3∶typ.base) , []) := by
+  apply in_context.init 3
+  rfl
 
 
 -- We define substitution of the term u for the variable named n in the term t --
@@ -68,20 +93,38 @@ notation t"[" u "//" n"]" => subst n t u
 
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
-  | var :(n:Nat) → (T : typ) → TR ((n∶T) , []) ($ n) T
+  | var : (n:Nat) → (T : typ) → TR ((n∶T) , []) ($ n) T
+  | weak : TR Γ t T → TR (((fresh_var Γ)∶T₀) , Γ) t T
   | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (term.abs ($ n) t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ (term.app t₀ t₁) B
   | sub : (A : typ) → (n:Nat) → (t u : term) → TR Γ t A → TR Γ (t[u // n]) A
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
 
-inductive valid_ctx : ctx → Prop
-  | var : valid_ctx ((x∶A) , [])
-  | cons : valid_ctx Γ →
+-- The contexts are valid under the typing rules --
+theorem no_duplicates_in_ctx :    (c : ctx_elem)
+                                → (Γ : ctx)
+                                → (c.name ∈ Γ)
+                                → (Γ ⊢ t ∶∶ A)
+                                → count 1 c.name Γ := by
+  intros c Γ p d
+  induction d
+  case var n T =>
+    apply count.next_yes
+    apply count.nil
+    cases p
+    case a.init m => exact m
+    case a.next q₀ q₁ => contradiction
+  case weak => sorry
+  case abs => sorry
+  case app => sorry
+  case sub => sorry
+
+
 
 -- Weakening is admissible --
-theorem weakening : (Γ ⊢ t ∶∶ A) → valid_ctx ((y∶B) , Γ) → (((y∶B) , Γ) ⊢ t ∶∶ A) := by
-  sorry
+-- theorem weakening :
+
 
 -- We define the α equivalence here, two terms are equivalent up to renaming of the bound variables --
 

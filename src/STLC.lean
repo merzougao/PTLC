@@ -17,41 +17,39 @@ inductive term : Type
 
 notation "$"n => term.var n
 
--- We define lists here to be able to embed the context as a list we no duplicates --
-inductive list (T : Type): Type
-  | nil : list T
-  | append : (t : T) → (l : list T) → list T
+def print_term : term → String := by
+  intro t
+  cases t
+  case var k => exact toString k
+  case abs t₀ t₁ => exact "λ" ++ (print_term t₀)++"."++ (print_term t₁)
+  case app u v => exact (print_term u) ++ "(" ++(print_term v)++")"
 
-notation "[]" => list.nil
-notation t","l => list.append t l
-
-inductive in_list (t : T) : list T → Prop
-  | cons : (t = t₀) → in_list t (t₀ , l)
-
-def not_in : T → list T → Prop :=
-  λt => λl => ¬ (in_list t l)
-
-inductive no_duplicates (T : Type) : list T → Prop
-  | nil : no_duplicates T nil
-  | head (t : T) (l : list T): not_in t l → no_duplicates T (t , l)
 
 -- A context is a list of Natural number paired with a type that do not contain duplicates in names --
 structure ctx_elem where
   name : Nat
   type : typ
 
-notation "ctx" => list ctx_elem
 -- Carefull, this is "\ :" and not just ":" in the following notation
 notation n"∶"t => ctx_elem.mk n t
 
+-- notation "ctx" => list ctx_elem
+inductive ctx : Type
+  | nil : ctx
+  | append : ctx_elem → ctx → ctx
+
+notation "[]" => ctx.nil
+notation t","Γ => ctx.append t Γ
+
 def ctx1 : ctx := (3∶typ.base) , []
 
-example : no_duplicates ctx_elem ctx1 := by
-  unfold ctx1
-  apply no_duplicates.head
-  unfold not_in
-  intro p
-  cases p
+inductive not_in : Nat → ctx → Prop
+  | nil : not_in n []
+  | cons : n ≠ m → not_in m Γ → not_in m ((n∶A) , Γ)
+
+inductive valid_ctx : ctx → Prop
+  | nil : valid_ctx []
+  | cons : valid_ctx Γ → not_in n Γ → valid_ctx ((n∶A) , Γ)
 
 
 -- We define substitution of the term u for the variable named n in the term t --
@@ -76,25 +74,23 @@ inductive TR : ctx → term → typ → Type
   | sub : (A : typ) → (n:Nat) → (t u : term) → TR Γ t A → TR Γ (t[u // n]) A
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
-#check ctx1 ⊢ ($ 3) ∶∶ typ.base
 
-example : ctx1 ⊢ ($ 3) ∶∶ typ.base := by
-  apply TR.var
+inductive valid_ctx : ctx → Prop
+  | var : valid_ctx ((x∶A) , [])
+  | cons : valid_ctx Γ →
+
+-- Weakening is admissible --
+theorem weakening : (Γ ⊢ t ∶∶ A) → valid_ctx ((y∶B) , Γ) → (((y∶B) , Γ) ⊢ t ∶∶ A) := by
+  sorry
 
 -- We define the α equivalence here, two terms are equivalent up to renaming of the bound variables --
--- We start by defining variable swap --
-def rename : Nat → term → term := by
-  intros n t
-  cases t
-  case var m => exact $ m
-  case abs k u => exact term.abs ($ n) (rename n u)
-  case app u v => exact term.app (rename n u) (rename n v)
 
-def var_swap : Nat → Nat → term → term := by
-  intros n m t
+-- We start by defining variable swap --
+def var_swap ( n m : Nat) : term → term := by
+  intro t
   cases t
   case var k => exact if k = n then ($ m) else (if k = m then ($ n) else ($ k))
-  case abs k u => exact term.abs (var_swap n m k) (var_swap n m u)
+  case abs k u =>  exact term.abs (var_swap n m k) (var_swap n m u)
   case app u v => exact term.app (var_swap n m u) (var_swap n m v)
 
 -- Now the α equivalence, it is an equivalence relation up to renaming bound variables in abstraction --
@@ -104,35 +100,55 @@ inductive αeq : term → term → Type
   | refl : αeq t t
   | trans : αeq t q → αeq q r → αeq t r
   | comm : αeq t q  → αeq q t
-  | abs (n : Nat) (t : term) : αeq (term.abs ($ n) t) (rename n (term.abs ($ n) t))
-
-
--- Substitution preserves alpha equivalence --
-theorem alpha_preservation : αeq t₀ t₁ → αeq (t₀ [ x // u ]) t₁ := by
-  intro p
-  sorry
+  | swap (n m : Nat) (t : term) : αeq t (var_swap n m t)
 
 -- We define the beta reduction relation here --
--- We first start with a one step reduction --
+
+-- Reduction of lambda abstraction applied to a term --
+inductive βr : term → term → Type
+  | cons : βr (term.app (term.abs ($ x) t) s) (t [ s // x ])
+
+notation t "▸" q => βr t q
+
+-- One step reduction --
 inductive β₁ : term → term → Type
-  | cons (n : Nat) : β₁ (term.app (term.abs ($ n) t) u) (t[u // n])
+  | incl : (t ▸ q) → β₁ t q
+  | app₁ : (t ▸ q) → β₁ (term.app t u) (term.app q u)
+  | app₂ : (t ▸ q) → β₁ (term.app u t) (term.app u q)
+  | abs : (t ▸ q) → β₁ (term.abs ($ x) t) (term.abs ($ x) q)
 
--- Now we define the beta reduction relation to be transitive closure of beta₁ --
-inductive  β : term → term → Type
-  | id : β₁ t₀ t₁ → β t₀ t₁
-  | cons : β₁ t₀ t₁ → β₁ t₁ t₂ → β t₀ t₂
+notation t "▸₁" q => β₁ t q
 
--- We define now the beta equivalence relation to be the reflexive closure of beta --
+-- Arbitrary long reduction --
+inductive β : term  → term → Type
+  | incl : (t ▸ q) → β t q
+  | trans : β t q → β q r → β t r
+
+notation t "▸β" q => β t q
+
+-- Beta equivalence adds commutativity and reflexivity --
 inductive βeq : term → term → Type
-  | id : β t₀ t₁ → βeq t₀ t₁
-  | refl : βeq t₀ t₁ → βeq t₁ t₀
+  | refl : βeq t t
+  | incl : (t ▸β q) → βeq t q
+  | comm : βeq t q → βeq q t
 
+notation t "≅β " q => βeq t q
 
--- We prove that beta reduction preserve the typing relation --
-theorem beta_preservation : (A : typ) → (Γ ⊢ t ∶∶ A) → βeq t t' → (Γ ⊢ t' ∶∶ A) := by
-  intro A p b
-  induction p
-  case var n T => sorry
-  case abs B C n Γ₀ t₀ q₀ q₁  => sorry
-  case app B C Γ₀ t₀ t₁ d₀ q₀ q₁ q₂ => sorry
-  case sub B n t₀ u₀ d₀ q₀ q₁ => sorry
+-- We now show that beta equivalence preserve the typing relation --
+
+theorem β_preservation : (t ≅β q) → (Γ ⊢ t ∶∶ A) → (Γ ⊢ q ∶∶ A) := by
+  intros c p
+  cases c
+  case refl => assumption
+  case incl p₀ =>
+    cases p₀
+    case incl p₁ =>
+      cases p₁
+      case cons n q₀ q₁ =>
+        apply TR.sub
+        cases q₀
+        case a.var m => sorry
+        case a.abs => sorry
+        case a.app => sorry
+    case trans => sorry
+  case comm => sorry

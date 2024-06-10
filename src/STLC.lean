@@ -101,6 +101,24 @@ inductive TR : ctx → term → typ → Type
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
 
+theorem fresh_var_not_in_ctx (v : Nat) (Γ : ctx): (v = fresh_var Γ) → v ∉ Γ := by
+  intro h₀ h₁
+  induction h₁
+  case init n₁ Γ₁ p =>
+    have this : fresh_var (n₁ , Γ₁) = n₁.name + 1 + (fresh_var Γ₁) := by rfl
+    rw [p] at this
+    have this₁ : 1 + fresh_var Γ₁ = 0 := by
+      apply @Nat.add_left_cancel n₁.name (1 + fresh_var Γ₁) 0
+      simp
+      rw [← Nat.add_assoc n₁.name 1 (fresh_var Γ₁)]
+      assumption
+    have this₂ : 1 = 0 ∧ (fresh_var Γ₁) = 0 := by
+      apply (@Nat.add_eq_zero_iff 1 (fresh_var Γ₁)).mp this₁
+    apply Nat.succ_ne_zero 0
+    apply this₂.left
+  case next n₁ Γ₁ p iH₁ => sorry
+
+
 theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (c ∈ Γ) := by
   intro p
   cases p
@@ -147,19 +165,21 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
     case a.next q₀  => contradiction
 
   case weak Γ₀ t₀ T₀ T₁ iH₀ iH₁ =>
-
-  -- count 1 c.name ((fresh_var Γ₀∶T₁),Γ₀)
+-- fresh_var_not_in_ctx : (v = fresh_var Γ) → v ∉ Γ
     have this₀ :  (c.name = (fresh_var Γ₀)) ∨ (c.name ∈ Γ₀) := in_compositve_ctx c.name (fresh_var Γ₀) p
     apply Or.elim this₀
     case left =>
       intro d₀
       apply count.next_yes
-      have this₁ : c.name ∉ Γ₀ := by sorry
+      have this₁ : c.name ∉ Γ₀ := fresh_var_not_in_ctx c.name Γ₀ d₀
       apply not_in_count
       assumption
+      rw [d₀]
     case right =>
       intro d₀
-      sorry
+      apply count.next_no
+      case a => exact iH₁ d₀
+      case a => sorry
   case abs A₀ B₀ n₀ Γ₀ t₀ iH₀ iH₁ =>
     have this₀ : (c.name∈(n₀∶A₀),Γ₀) := by
       apply in_context.next
@@ -168,7 +188,8 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
     cases this₁
     case next_yes K₀ K₁ =>
       cases K₁
-      contradiction
+      case nil => contradiction
+      case next_no n₁ m₁ Γ₁ iH₂=> sorry
     case next_no K₀ K₁ =>
       assumption
   case app A₀ B₀ Γ₀ t₀ t₁ iH₁ iH₂ iH₃ iH₄ =>

@@ -1,2 +1,2 @@
 # PTLC
-Pure type lambda calculus
+Pure typed lambda calculus

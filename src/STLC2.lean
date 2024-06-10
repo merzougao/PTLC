@@ -1,5 +1,8 @@
 import Init.Data.Nat.Basic
 
+
+-- This file is testing an other way of doing substitution to avoid trivial cases --
+
 -- We start with a base type and an arrow type --
 inductive typ : Type
   | base : typ
@@ -50,8 +53,8 @@ inductive in_context : Nat → ctx → Prop
   | next (n : Nat) (t : ctx_elem) (Γ : ctx) : in_context n Γ → in_context n (t , Γ)
 
 -- Count the number of elements in the context sharing the same name --
-inductive count : Nat → Nat → ctx → Prop
-  | nil   (c : Nat) : count 0 c []
+inductive count : Nat → Nat → ctx → Type
+  | nil   : count 0 c []
   | next_yes  : count n m Γ → m = c.name → count (n+1) m (c ,Γ)
   | next_no  :  count n m Γ → m ≠ c.name → count n m (c ,Γ)
 
@@ -78,18 +81,18 @@ example : 3 ∈ ((3∶typ.base) , []) := by
 
 
 -- We define substitution of the term u for the variable named n in the term t --
-def subst : Nat → term → term → term := by
-  intros n t u
-  cases t
-  case var k => exact if k = n then u else $ k
-  case abs x q =>
-    cases x
-    case var k => exact term.abs (subst n ($ k) u) (subst n q u)
-    case abs t₀ t₁ => exact term.abs (term.abs t₀ t₁) q           -- Note that this case is not possible for well typed terms --
-    case app t₀ t₁ => exact term.abs (term.app t₀ t₁) q           -- Note that this case is not possible for well typed terms --
-  case app t₀ t₁ => exact term.app (subst n t₀ u) (subst n t₁ u)
+-- def subst : Nat → term → term → term := by
+--   intros n t u
+--   cases t
+--   case var k => exact if k = n then u else $ k
+--   case abs x q =>
+--     cases x
+--     case var k => exact term.abs (subst n ($ k) u) (subst n q u)
+--     case abs t₀ t₁ => exact term.abs (term.abs t₀ t₁) q           -- Note that this case is not possible for well typed terms --
+--     case app t₀ t₁ => exact term.abs (term.app t₀ t₁) q           -- Note that this case is not possible for well typed terms --
+--   case app t₀ t₁ => exact term.app (subst n t₀ u) (subst n t₁ u)
 
-notation t"[" u "//" n"]" => subst n t u
+-- notation t"[" u "//" n"]" => subst n t u
 
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
@@ -97,11 +100,11 @@ inductive TR : ctx → term → typ → Type
   | weak : TR Γ t T → TR (((fresh_var Γ)∶T₀) , Γ) t T
   | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (term.abs ($ n) t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ (term.app t₀ t₁) B
-  | sub : (A : typ) → (n:Nat) → (t u : term) → TR Γ t A → TR Γ (t[u // n]) A
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
 
-theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (c ∈ Γ) := by
+
+theorem test (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (c ∈ Γ) := by
   intro p
   cases p
   case init H =>
@@ -110,26 +113,6 @@ theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (
   case next H =>
     apply Or.intro_right
     exact H
-theorem not_in_count (n : Nat ) ( Γ : ctx ) : (n ∉ Γ) → (count 0 n Γ) := by
-  intro d₀
-  induction Γ
-  case nil =>
-    apply count.nil
-  case append c₀ Γ₀ iH₀ =>
-    have : n ≠ c₀.name := by
-      intro p
-      apply d₀
-      apply in_context.init
-      assumption
-    have this₀ : n ∉ Γ₀ := by
-      intro p
-      apply d₀
-      apply in_context.next
-      assumption
-    have this₁ : count 0 n Γ₀ := iH₀ this₀
-    apply count.next_no
-    assumption
-    assumption
 
 -- The contexts are valid under the typing rules --
 theorem no_duplicates_in_ctx :    (c : ctx_elem)
@@ -147,19 +130,9 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
     case a.next q₀  => contradiction
 
   case weak Γ₀ t₀ T₀ T₁ iH₀ iH₁ =>
+    have this₀ :  c.name = (fresh_var Γ₀) ∨ c.name ∈ Γ₀ := test c.name (fresh_var Γ₀) p
 
-  -- count 1 c.name ((fresh_var Γ₀∶T₁),Γ₀)
-    have this₀ :  (c.name = (fresh_var Γ₀)) ∨ (c.name ∈ Γ₀) := in_compositve_ctx c.name (fresh_var Γ₀) p
-    apply Or.elim this₀
-    case left =>
-      intro d₀
-      apply count.next_yes
-      have this₁ : c.name ∉ Γ₀ := by sorry
-      apply not_in_count
-      assumption
-    case right =>
-      intro d₀
-      sorry
+
   case abs A₀ B₀ n₀ Γ₀ t₀ iH₀ iH₁ =>
     have this₀ : (c.name∈(n₀∶A₀),Γ₀) := by
       apply in_context.next

@@ -158,15 +158,15 @@ theorem count_to_not (k n : Nat) (Γ : ctx): (count k n Γ) → (k = 0) → (n �
   case nil =>
     intro p
     contradiction
-  case next_no k₀ k₁ Γ₀ c₀ H₀ H₁ H₂ =>
+  case next_no k₀ k₁ Γ₀ c₀ _ H₁ H₂ =>
     intro p
     cases p
     case init H₃ => contradiction
     case next H₃ =>
       have : ¬ k₁ ∈ Γ₀ := H₂ d₀
       exact this H₃
-  case next_yes k₀ k₁ Γ₀ c₀ H₀ H₁ H₂ =>
-    intro p
+  case next_yes k₀ k₁ Γ₀ c₀ _ _ _ =>
+    intro
     have this₂ : k₀ = 0 ∧ 1 = 0 := (@Nat.add_eq_zero_iff k₀ 1).mp d₀
     apply Nat.succ_ne_zero 0
     apply this₂.right
@@ -185,12 +185,11 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
   intros c Γ p d
   induction d
   case var n T =>
-    apply count.next_yes
-    apply count.nil
+    apply count.next_yes ; apply count.nil
     cases p
     case a.init m => exact m
     case a.next q₀  => contradiction
-  case weak Γ₀ t₀ T₀ T₁ iH₀ iH₁ =>
+  case weak Γ₀ _ _ T₁ _ iH₁ =>
     have this₀ :  (c.name = (fresh_var Γ₀)) ∨ (c.name ∈ Γ₀) := in_compositve_ctx c.name (fresh_var Γ₀) p
     apply Or.elim this₀
     case left =>
@@ -211,22 +210,16 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
         simp at p₀
         rw [p₀] at d₀
         assumption
-  case abs A₀ B₀ n₀ Γ₀ t₀ iH₀ iH₁ =>
-    have this₀ : (c.name∈(n₀∶A₀),Γ₀) := by
-      apply in_context.next
-      assumption
+  case abs A₀ _ n₀ Γ₀ _ _ iH₁ =>
+    have this₀ : (c.name∈(n₀∶A₀),Γ₀) :=  in_context.next c.name (n₀∶A₀) Γ₀ p
     have this₁ : count 1 c.name ((n₀∶A₀),Γ₀) := iH₁ this₀
     cases this₁
     case next_yes K₀ K₁ =>
-      sorry
-    case next_no K₀ K₁ =>
-      assumption
-  case app A₀ B₀ Γ₀ t₀ t₁ iH₁ iH₂ iH₃ iH₄ =>
-    apply iH₃
-    assumption
-  case sub Γ₀ A₀ n₀ t₀ t₁ iH₁ iH₂ =>
-    apply iH₂
-    assumption
+      have this₂ : c.name ∉ Γ₀ := count_to_not 0 c.name Γ₀ K₁ rfl
+      contradiction
+    case next_no K₀ K₁ => assumption
+  case app _ B₀ _ _ _ _ _ iH₃ => exact iH₃ p
+  case sub Γ₀ _ _ _ _ _ iH₂ => exact iH₂ p
 
 
 -- Weakening is admissible --
@@ -288,7 +281,7 @@ notation t "≅β " q => βeq t q
 
 theorem β_preservation : (t ≅β q) → (Γ ⊢ t ∶∶ A) → (Γ ⊢ q ∶∶ A) := by
   intros c p
-  cases c
+  induction c
   case refl => assumption
   case incl p₀ =>
     cases p₀
@@ -301,4 +294,4 @@ theorem β_preservation : (t ≅β q) → (Γ ⊢ t ∶∶ A) → (Γ ⊢ q ∶�
         case a.abs => sorry
         case a.app => sorry
     case trans => sorry
-  case comm => sorry
+  case comm  r₀ r₁ iH₀ iH₁ => sorry

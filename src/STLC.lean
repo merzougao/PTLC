@@ -117,8 +117,6 @@ theorem fresh_var_not_in_ctx (v : Nat) (Γ : ctx): (v = fresh_var Γ) → v ∉ 
     apply Nat.succ_ne_zero 0
     apply this₂.left
   case next n₁ Γ₁ p iH₁ => sorry
-
-
 theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (c ∈ Γ) := by
   intro p
   cases p
@@ -148,6 +146,8 @@ theorem not_in_count (n : Nat ) ( Γ : ctx ) : (n ∉ Γ) → (count 0 n Γ) := 
     apply count.next_no
     assumption
     assumption
+theorem in_extended_ctx (n : Nat) (Γ : ctx) (c : ctx_elem): (n ∈ Γ) → (n ∈ (c , Γ)) := by
+  sorry
 
 -- The contexts are valid under the typing rules --
 theorem no_duplicates_in_ctx :    (c : ctx_elem)
@@ -163,9 +163,7 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
     cases p
     case a.init m => exact m
     case a.next q₀  => contradiction
-
   case weak Γ₀ t₀ T₀ T₁ iH₀ iH₁ =>
--- fresh_var_not_in_ctx : (v = fresh_var Γ) → v ∉ Γ
     have this₀ :  (c.name = (fresh_var Γ₀)) ∨ (c.name ∈ Γ₀) := in_compositve_ctx c.name (fresh_var Γ₀) p
     apply Or.elim this₀
     case left =>
@@ -179,7 +177,12 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
       intro d₀
       apply count.next_no
       case a => exact iH₁ d₀
-      case a => sorry
+      case a =>
+        intro p₀
+        apply fresh_var_not_in_ctx c.name Γ₀
+        simp at p₀
+        assumption
+        assumption
   case abs A₀ B₀ n₀ Γ₀ t₀ iH₀ iH₁ =>
     have this₀ : (c.name∈(n₀∶A₀),Γ₀) := by
       apply in_context.next
@@ -189,7 +192,7 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
     case next_yes K₀ K₁ =>
       cases K₁
       case nil => contradiction
-      case next_no n₁ m₁ Γ₁ iH₂=> sorry
+      case next_no Γ₂ m₁ Γ₁ iH₂=> sorry
     case next_no K₀ K₁ =>
       assumption
   case app A₀ B₀ Γ₀ t₀ t₁ iH₁ iH₂ iH₃ iH₄ =>

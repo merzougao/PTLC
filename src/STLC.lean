@@ -1,9 +1,11 @@
 import Init.Data.Nat.Basic
 
+
 -- We start with a base type and an arrow type --
 inductive typ : Type
   | base : typ
   | arrow : typ → typ → typ
+
 -- Conveniance notations --
 notation A"->"B => typ.arrow A B
 
@@ -44,6 +46,9 @@ def fresh_var : ctx → Nat := by
   cases Γ
   case nil => exact 0
   case append elem Γ => exact elem.name + 1 + fresh_var Γ
+
+@[simp]
+theorem fresh_var_append : fresh_var (elem , Γ) = elem.name + 1 + fresh_var Γ := rfl
 
 inductive in_context : Nat → ctx → Prop
   | init (n : Nat) (c : ctx_elem) (Γ : ctx) : n = c.name → in_context n (c , Γ)
@@ -94,22 +99,50 @@ notation t"[" u "//" n"]" => subst n t u
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
   | var : (n:Nat) → (T : typ) → TR ((n∶T) , []) ($ n) T
-  | weak : TR Γ t T → TR (((fresh_var Γ)∶T₀) , Γ) t T
+  | weak (T₀ : typ) : TR Γ t T → TR (((fresh_var Γ)∶T₀) , Γ) t T
   | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (term.abs ($ n) t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ (term.app t₀ t₁) B
   | sub : (A : typ) → (n:Nat) → (t u : term) → TR Γ t A → TR Γ (t[u // n]) A
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
 
+theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
+                                → (t₀ t₁ : term)
+                                → (v = term.app t₀ t₁)
+                                → (Σ B Γ' , Γ' ⊢ t₀ ∶∶ B -> A) := by
+  intro d₀
+  induction d₀
+  case app A₀ B₀ Γ' t₃ t₄ iH₂ iH₃ iH₄ iH₅=>
+    intro t₀ t₁ p
+    injection p with H₀ H₁
+    rw [H₀] at iH₂
+    exact Sigma.mk A₀ (Sigma.mk Γ' iH₂)
+  case weak Γ₀ t₂ A₀ A₁ iH₁ iH₂ => exact iH₂
+  case sub Γ₀ A₀ n₀ t₂ t₃ iH₀ iH₁ =>
+    intro t₀ t₁ p
+    sorry
+  <;> contradiction
+
+theorem abs_app_type_inference : (Γ ⊢ (term.app t s) ∶∶ A) → (x t' : term) → (t = (term.abs x t')) → (Σ Γ' , Γ' ⊢ t' ∶∶ A) := by
+  intro d
+  have : (Σ P Γ' , (Γ' ⊢ t ∶∶ P)) := app_type_inference d t s rfl
+  intro x t' p
+  apply Sigma.mk
+  case fst => exact Γ
+  case snd =>
+    cases this.snd.snd
+
+  sorry
+
+-- the fresh_var function always return a variable that is not present in the context --
 theorem fresh_var_not_in_ctx (Γ : ctx) : (fresh_var Γ) ∉ Γ := by
   intro p
   induction Γ
   case nil => contradiction
   case append c₀ Γ₀ iH =>
-    have : (fresh_var (c₀ , Γ₀)) = c₀.name + 1 + fresh_var Γ₀ := by rfl
     cases p
     case init r =>
-      rw [r] at this
+      simp at r
       have this₀ : 1 + fresh_var Γ₀ = 0 := by
         apply @Nat.add_left_cancel c₀.name (1 + fresh_var Γ₀) 0
         simp
@@ -120,6 +153,7 @@ theorem fresh_var_not_in_ctx (Γ : ctx) : (fresh_var Γ) ∉ Γ := by
       apply Nat.succ_ne_zero 0
       apply this₂.left
     case next r => sorry
+
 
 theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (c ∈ Γ) := by
   intro p
@@ -256,9 +290,9 @@ notation t "▸" q => βr t q
 -- One step reduction --
 inductive β₁ : term → term → Type
   | incl : (t ▸ q) → β₁ t q
-  | app₁ : (t ▸ q) → β₁ (term.app t u) (term.app q u)
-  | app₂ : (t ▸ q) → β₁ (term.app u t) (term.app u q)
-  | abs : (t ▸ q) → β₁ (term.abs ($ x) t) (term.abs ($ x) q)
+  | app₁ : β₁ t  q → β₁ (term.app t u) (term.app q u)
+  | app₂ : β₁ t  q → β₁ (term.app u t) (term.app u q)
+  | abs : β₁ t  q → β₁ (term.abs ($ x) t) (term.abs ($ x) q)
 
 notation t "▸₁" q => β₁ t q
 
@@ -279,6 +313,62 @@ notation t "≅β " q => βeq t q
 
 -- We now show that beta equivalence preserve the typing relation --
 
+theorem uniqueness_of_types : (Γ ⊢ t ∶∶ A) → (Γ ⊢ t ∶∶ B) → (A = B) := by
+  intro d₀ d₁
+  induction d₀
+  case var n₀ A₀ => sorry
+  sorry
+theorem types_from_app : (v = term.app t₀ t₁) →  (Γ ⊢ v ∶∶ B) → (Γ ⊢ t₁ ∶∶ A) → (Γ ⊢ t₀ ∶∶ A -> B) := by
+  intro p d₀ d₁
+  induction d₀
+  case var n => contradiction
+  case weak Γ₀ t₃ A₀ B₀ iH₃ iH₄ =>
+    apply TR.weak
+    apply iH₄
+    exact p
+  case abs A₀ B₀ n₀ Γ₀ t₃ iH₁ iH₂ =>
+    contradiction
+  case app A₀ B₀ Γ₀ t₃ t₄ iH₂ iH₃ iH₄ iH₅ =>
+    injection p with h₁ h₂
+    rw [h₂] at iH₃
+    have : A = A₀ := uniqueness_of_types d₁ iH₃
+    rw [this]
+    rw [h₁] at iH₂
+    assumption
+  case sub Γ₀ A₀ t₃ t₄ t₅ iH₂ iH₃ => sorry
+
+
+theorem β₁_preservation : (t ▸₁ q)
+                          → (Σ A Γ , (Γ ⊢ t ∶∶ A))
+                          → (Σ Δ , (Δ ⊢ q ∶∶ A)) := by
+  intro c p
+  induction c
+  case incl t₀ t₁ p₀ =>
+    cases p₀
+    case cons n₀ q₀ q₁ =>
+      apply Sigma.mk
+      case fst => exact (n₀ ∶ p.fst) , p.snd.fst
+      case snd =>
+
+      case a => sorry -- Inversion of abs
+  case app₁ t₀ t₁ t₂ p₀ iH₀ =>
+
+  case app₂ => sorry
+  case abs => sorry
+
+
+
+theorem β₂_preservation : (t ▸β q) → (Γ ⊢ t ∶∶ A) → (Γ ⊢ q ∶∶ A) := by
+  intro c p
+  induction c
+  case incl t₀ t₁ iH => sorry -- exact β₁_preservation
+  case trans t₀ t₁ t₂ iH₀ iH₁ iH₂ iH₃=>
+    apply iH₃
+    apply iH₂
+    assumption
+
+
+-- The full beta reduction preservation theorem --
 theorem β_preservation : (t ≅β q) → (Γ ⊢ t ∶∶ A) → (Γ ⊢ q ∶∶ A) := by
   intros c p
   induction c

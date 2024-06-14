@@ -1,4 +1,5 @@
 import Init.Data.Nat.Basic
+import Init.Data.List.Basic
 
 
 -- We start with a base type and an arrow type --
@@ -12,16 +13,18 @@ notation A"->"B => typ.arrow A B
 -- We define terms in a recursive manner --
 inductive term : Type
   | var : Nat → term            -- Each variables is identitifed by a natural number
-  | abs : term → term → term    -- Lambda abstraction
+  | abs : Nat → term → term    -- Lambda abstraction
   | app : term → term → term    -- Application
 
-notation "$"n => term.var n
+notation:max "$"n => term.var n
+notation:max "λ["x"]."t => term.abs x t
+notation:max t₀"{"t₁"}" => term.app t₀ t₁
 
 def print_term : term → String := by
   intro t
   cases t
   case var k => exact toString k
-  case abs t₀ t₁ => exact "λ" ++ (print_term t₀)++"."++ (print_term t₁)
+  case abs n t₁ => exact "λ" ++ toString n ++"."++ (print_term t₁)
   case app u v => exact (print_term u) ++ "(" ++(print_term v)++")"
 
 
@@ -41,14 +44,12 @@ inductive ctx : Type
 notation "[]" => ctx.nil
 notation t","Γ => ctx.append t Γ
 
-def fresh_var : ctx → Nat := by
-  intro Γ
-  cases Γ
-  case nil => exact 0
-  case append elem Γ => exact elem.name + 1 + fresh_var Γ
-
-@[simp]
-theorem fresh_var_append : fresh_var (elem , Γ) = elem.name + 1 + fresh_var Γ := rfl
+def fresh_var : term → Nat := by
+  intro t
+  cases t
+  case var k => exact k + 1
+  case abs n₀ t₀ => exact n₀ + fresh_var t₀ + 1
+  case app t₀ t₁ => exact fresh_var t₀ + fresh_var t₁
 
 inductive in_context : Nat → ctx → Prop
   | init (n : Nat) (c : ctx_elem) (Γ : ctx) : n = c.name → in_context n (c , Γ)
@@ -81,34 +82,53 @@ example : 3 ∈ ((3∶typ.base) , []) := by
   apply in_context.init 3
   rfl
 
+-- Swap natural numbers --
+def swap_nats ( n m : Nat) : Nat → Nat := by
+  intro k
+  exact if k = n then m else (if k = m then n else k)
+
+-- We start by defining variable swap --
+def var_swap ( n m : Nat) : term → term := by
+  intro t
+  cases t
+  case var k => exact if k = n then ($ m) else (if k = m then ($ n) else ($ k))
+  case abs k u =>  exact λ[swap_nats n m k].(var_swap n m u)
+  case app u v => exact (var_swap n m u){var_swap n m v}
+
+def rename : Nat → term → term := λ n => λ t => var_swap n (fresh_var t) t
+
+def t₀ : term := λ[0].($ 0){$ 1}
+#eval print_term (rename 0 t₀)
+
+def fv : term → List Nat := by
+  intro t
+  cases t
+  case var k => exact [k]
+  case abs n₀ t₀ => exact List.erase (fv t₀) n₀
+  case app t₀ t₁ => exact List.append (fv t₀) (fv t₁)
 
 -- We define substitution of the term u for the variable named n in the term t --
 def subst : Nat → term → term → term := by
   intros n t u
   cases t
   case var k => exact if k = n then u else $ k
-  case abs x q =>
-    cases x
-    case var k => exact term.abs (subst n ($ k) u) (subst n q u)
-    case abs t₀ t₁ => exact term.abs (term.abs t₀ t₁) q           -- Note that this case is not possible for well typed terms --
-    case app t₀ t₁ => exact term.abs (term.app t₀ t₁) q           -- Note that this case is not possible for well typed terms --
-  case app t₀ t₁ => exact term.app (subst n t₀ u) (subst n t₁ u)
+  case abs x q => exact if (x ∉ (fv u)) ∧ x ≠ n then λ[x].(subst n q u) else λ[x].q
+  case app t₀ t₁ => exact (subst n t₀ u){subst n t₁ u}
 
 notation t"[" u "//" n"]" => subst n t u
 
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
   | var : (n:Nat) → (T : typ) → TR ((n∶T) , []) ($ n) T
-  | weak (T₀ : typ) : TR Γ t T → TR (((fresh_var Γ)∶T₀) , Γ) t T
-  | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (term.abs ($ n) t) (A -> B)
-  | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ (term.app t₀ t₁) B
-  | sub : (A : typ) → (n:Nat) → (t u : term) → TR Γ t A → TR Γ (t[u // n]) A
+  | weak (T₀ : typ) : TR Γ t T → TR (((fresh_var t)∶T₀) , Γ) t T
+  | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (λ[n].t) (A -> B)
+  | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ t₀{t₁} B
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
 
 theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
                                 → (t₀ t₁ : term)
-                                → (v = term.app t₀ t₁)
+                                → (v = t₀{t₁})
                                 → (Σ B Γ' , Γ' ⊢ t₀ ∶∶ B -> A) := by
   intro d₀
   induction d₀
@@ -118,12 +138,10 @@ theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
     rw [H₀] at iH₂
     exact Sigma.mk A₀ (Sigma.mk Γ' iH₂)
   case weak Γ₀ t₂ A₀ A₁ iH₁ iH₂ => exact iH₂
-  case sub Γ₀ A₀ n₀ t₂ t₃ iH₀ iH₁ =>
-    intro t₀ t₁ p
-    sorry
-  <;> contradiction
+  case  var => sorry
+  case abs => sorry
 
-theorem abs_app_type_inference : (Γ ⊢ (term.app t s) ∶∶ A) → (x t' : term) → (t = (term.abs x t')) → (Σ Γ' , Γ' ⊢ t' ∶∶ A) := by
+theorem abs_app_type_inference : (Γ ⊢ t{s} ∶∶ A) → (x t' : term) → (t = (λ[x].t')) → (Σ Γ' , Γ' ⊢ t' ∶∶ A) := by
   intro d
   have : (Σ P Γ' , (Γ' ⊢ t ∶∶ P)) := app_type_inference d t s rfl
   intro x t' p
@@ -131,7 +149,6 @@ theorem abs_app_type_inference : (Γ ⊢ (term.app t s) ∶∶ A) → (x t' : te
   case fst => exact Γ
   case snd =>
     cases this.snd.snd
-
   sorry
 
 -- the fresh_var function always return a variable that is not present in the context --
@@ -262,13 +279,7 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
 
 -- We define the α equivalence here, two terms are equivalent up to renaming of the bound variables --
 
--- We start by defining variable swap --
-def var_swap ( n m : Nat) : term → term := by
-  intro t
-  cases t
-  case var k => exact if k = n then ($ m) else (if k = m then ($ n) else ($ k))
-  case abs k u =>  exact term.abs (var_swap n m k) (var_swap n m u)
-  case app u v => exact term.app (var_swap n m u) (var_swap n m v)
+
 
 -- Now the α equivalence, it is an equivalence relation up to renaming bound variables in abstraction --
 -- Note that this equivalence is weaker than the one we want because there is no well typed restriction here --
@@ -283,16 +294,16 @@ inductive αeq : term → term → Type
 
 -- Reduction of lambda abstraction applied to a term --
 inductive βr : term → term → Type
-  | cons : βr (term.app (term.abs ($ x) t) s) (t [ s // x ])
+  | cons : βr (λ[$ x].t){s} (t [ s // x ])
 
 notation t "▸" q => βr t q
 
 -- One step reduction --
 inductive β₁ : term → term → Type
   | incl : (t ▸ q) → β₁ t q
-  | app₁ : β₁ t  q → β₁ (term.app t u) (term.app q u)
-  | app₂ : β₁ t  q → β₁ (term.app u t) (term.app u q)
-  | abs : β₁ t  q → β₁ (term.abs ($ x) t) (term.abs ($ x) q)
+  | app₁ : β₁ t  q → β₁ t{u} q{u}
+  | app₂ : β₁ t  q → β₁ u{t} u{q}
+  | abs : β₁ t  q → β₁ (λ[$ x].t) (λ[$ x].q)
 
 notation t "▸₁" q => β₁ t q
 
@@ -318,7 +329,7 @@ theorem uniqueness_of_types : (Γ ⊢ t ∶∶ A) → (Γ ⊢ t ∶∶ B) → (A
   induction d₀
   case var n₀ A₀ => sorry
   sorry
-theorem types_from_app : (v = term.app t₀ t₁) →  (Γ ⊢ v ∶∶ B) → (Γ ⊢ t₁ ∶∶ A) → (Γ ⊢ t₀ ∶∶ A -> B) := by
+theorem types_from_app : (v = t₀{t₁}) →  (Γ ⊢ v ∶∶ B) → (Γ ⊢ t₁ ∶∶ A) → (Γ ⊢ t₀ ∶∶ A -> B) := by
   intro p d₀ d₁
   induction d₀
   case var n => contradiction

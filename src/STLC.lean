@@ -119,12 +119,15 @@ notation t"[" u "//" n"]" => subst n t u
 
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
-  | var : (n:Nat) → (T : typ) → TR ((n∶T) , []) ($ n) T
-  | weak (T₀ : typ) : TR Γ t T → TR (((fresh_var t)∶T₀) , Γ) t T
+  | var : (n:Nat) → (T : typ) → TR ((n∶T) , Γ) ($ n) T
   | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (λ[n].t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ t₀{t₁} B
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
+
+
+theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → (((fresh_var t∶B) , Γ) ⊢ t ∶∶ A) := by
+  sorry
 
 theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
                                 → (t₀ t₁ : term)
@@ -137,40 +140,7 @@ theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
     injection p with H₀ H₁
     rw [H₀] at iH₂
     exact Sigma.mk A₀ (Sigma.mk Γ' iH₂)
-  case weak Γ₀ t₂ A₀ A₁ iH₁ iH₂ => exact iH₂
-  case  var => sorry
-  case abs => sorry
-
-theorem abs_app_type_inference : (Γ ⊢ t{s} ∶∶ A) → (x t' : term) → (t = (λ[x].t')) → (Σ Γ' , Γ' ⊢ t' ∶∶ A) := by
-  intro d
-  have : (Σ P Γ' , (Γ' ⊢ t ∶∶ P)) := app_type_inference d t s rfl
-  intro x t' p
-  apply Sigma.mk
-  case fst => exact Γ
-  case snd =>
-    cases this.snd.snd
-  sorry
-
--- the fresh_var function always return a variable that is not present in the context --
-theorem fresh_var_not_in_ctx (Γ : ctx) : (fresh_var Γ) ∉ Γ := by
-  intro p
-  induction Γ
-  case nil => contradiction
-  case append c₀ Γ₀ iH =>
-    cases p
-    case init r =>
-      simp at r
-      have this₀ : 1 + fresh_var Γ₀ = 0 := by
-        apply @Nat.add_left_cancel c₀.name (1 + fresh_var Γ₀) 0
-        simp
-        rw [← Nat.add_assoc c₀.name 1 (fresh_var Γ₀)]
-        assumption
-      have this₂ : 1 = 0 ∧ (fresh_var Γ₀) = 0 := by
-        apply (@Nat.add_eq_zero_iff 1 (fresh_var Γ₀)).mp this₀
-      apply Nat.succ_ne_zero 0
-      apply this₂.left
-    case next r => sorry
-
+  <;> intros <;> contradiction
 
 theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (c ∈ Γ) := by
   intro p
@@ -240,27 +210,6 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
     cases p
     case a.init m => exact m
     case a.next q₀  => contradiction
-  case weak Γ₀ _ _ T₁ _ iH₁ =>
-    have this₀ :  (c.name = (fresh_var Γ₀)) ∨ (c.name ∈ Γ₀) := in_compositve_ctx c.name (fresh_var Γ₀) p
-    apply Or.elim this₀
-    case left =>
-      intro d₀
-      apply count.next_yes
-      have this₂ : (fresh_var Γ₀) ∉ Γ₀ := fresh_var_not_in_ctx Γ₀
-      apply not_to_count
-      rw [←d₀] at this₂
-      assumption
-      rw [d₀]
-    case right =>
-      intro d₀
-      apply count.next_no
-      case a => exact iH₁ d₀
-      case a =>
-        intro p₀
-        apply fresh_var_not_in_ctx Γ₀
-        simp at p₀
-        rw [p₀] at d₀
-        assumption
   case abs A₀ _ n₀ Γ₀ _ _ iH₁ =>
     have this₀ : (c.name∈(n₀∶A₀),Γ₀) :=  in_context.next c.name (n₀∶A₀) Γ₀ p
     have this₁ : count 1 c.name ((n₀∶A₀),Γ₀) := iH₁ this₀
@@ -270,7 +219,6 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
       contradiction
     case next_no K₀ K₁ => assumption
   case app _ B₀ _ _ _ _ _ iH₃ => exact iH₃ p
-  case sub Γ₀ _ _ _ _ _ iH₂ => exact iH₂ p
 
 
 -- Weakening is admissible --
@@ -294,18 +242,47 @@ inductive αeq : term → term → Type
 
 -- Reduction of lambda abstraction applied to a term --
 inductive βr : term → term → Type
-  | cons : βr (λ[$ x].t){s} (t [ s // x ])
+  | cons : βr (λ[x].t){s} (t [ s // x ])
 
-notation t "▸" q => βr t q
+notation:max t "▸" q => βr t q
+
+theorem β_preservation₀ : (Γ ⊢ t ∶∶ A) → (q : term) → (t ▸ q) → (Γ ⊢ q ∶∶ A) := by
+  intro d
+  induction d
+  case var n₀ A₀ =>
+    intro t₀ H₀
+    contradiction
+  case abs A₀ B₀ n₀ Γ₀ t₀ iH₀ iH₁ =>
+    intro q H₀
+    contradiction
+  case app A₀ B₀ Γ₀ t₀ t₁ d₀ d₁ iH₀ iH₁ =>
+    intro q H₀
+    sorry
+
 
 -- One step reduction --
 inductive β₁ : term → term → Type
   | incl : (t ▸ q) → β₁ t q
   | app₁ : β₁ t  q → β₁ t{u} q{u}
   | app₂ : β₁ t  q → β₁ u{t} u{q}
-  | abs : β₁ t  q → β₁ (λ[$ x].t) (λ[$ x].q)
+  | abs : β₁ t  q → β₁ (λ[x].t) (λ[x].q)
 
-notation t "▸₁" q => β₁ t q
+notation:max t "▸₁" q => β₁ t q
+
+
+theorem β_preservation₁ : (Γ ⊢ t ∶∶ A) → (q : term) → (t ▸₁ q) → (Γ ⊢ q ∶∶ A) := by
+  intro H₀ q H₁
+  induction H₁
+  case incl t₀ t₁ iH₀ => exact β_preservation₀ H₀ t₁ iH₀
+  case app₁ t₀ q₀ u₀ H₂ iH₀ => sorry
+
+
+
+
+
+
+
+
 
 -- Arbitrary long reduction --
 inductive β : term  → term → Type
@@ -323,30 +300,6 @@ inductive βeq : term → term → Type
 notation t "≅β " q => βeq t q
 
 -- We now show that beta equivalence preserve the typing relation --
-
-theorem uniqueness_of_types : (Γ ⊢ t ∶∶ A) → (Γ ⊢ t ∶∶ B) → (A = B) := by
-  intro d₀ d₁
-  induction d₀
-  case var n₀ A₀ => sorry
-  sorry
-theorem types_from_app : (v = t₀{t₁}) →  (Γ ⊢ v ∶∶ B) → (Γ ⊢ t₁ ∶∶ A) → (Γ ⊢ t₀ ∶∶ A -> B) := by
-  intro p d₀ d₁
-  induction d₀
-  case var n => contradiction
-  case weak Γ₀ t₃ A₀ B₀ iH₃ iH₄ =>
-    apply TR.weak
-    apply iH₄
-    exact p
-  case abs A₀ B₀ n₀ Γ₀ t₃ iH₁ iH₂ =>
-    contradiction
-  case app A₀ B₀ Γ₀ t₃ t₄ iH₂ iH₃ iH₄ iH₅ =>
-    injection p with h₁ h₂
-    rw [h₂] at iH₃
-    have : A = A₀ := uniqueness_of_types d₁ iH₃
-    rw [this]
-    rw [h₁] at iH₂
-    assumption
-  case sub Γ₀ A₀ t₃ t₄ t₅ iH₂ iH₃ => sorry
 
 
 theorem β₁_preservation : (t ▸₁ q)

@@ -71,8 +71,25 @@ notation:max c"∈⋆"L => in_list c L
 notation:max c"∉⋆"L => (in_list c L) → false
 
 inductive subset : ctx → ctx → Type
-  | cons : (c ∈⋆ Δ) → subset Γ Δ → subset (c :: Γ) Δ
+  | cons {c : ctx_elem} : (c ∈⋆ Δ) → subset Γ Δ → subset (c :: Γ) Δ
 notation:max Γ "⊆" Δ => subset Γ Δ
+
+theorem subset_ex (Γ : ctx) (c₁ c₀ : ctx_elem) (Δ : ctx):
+                    ((Γ ++ c₀ :: c₁ :: Δ) ⊆ Λ) → (Γ ++ c₁ :: c₀ :: Δ) ⊆ Λ := by
+  intro H
+  induction Γ
+  case nil =>
+    simp ; simp at H
+    apply subset.cons
+    case a => cases H ; case cons H₁ H₂ => cases H₂ ; assumption
+    case a =>
+      apply subset.cons
+      case a => cases H ; assumption
+      case a => cases H ; case cons H₁ H₂ => cases H₂ ; assumption
+  case cons c Γ₀ iH₀ =>
+    apply subset.cons
+    case a => cases H ; assumption
+    case a => apply iH₀ ; cases H ; case cons H₂ H₃ => assumption
 
 /-  Inductive type inhabited whenever Γ : ctx is valid
     i.e does not contain any duplicates in the strong sense (context elements not just variable
@@ -170,32 +187,8 @@ inductive in_context : Nat → ctx → Prop
   | init (n : Nat) (c : ctx_elem) (Γ : ctx) : n = c.name → in_context n (c :: Γ)
   | next (n : Nat) (t : ctx_elem) (Γ : ctx) : in_context n Γ → in_context n (t :: Γ)
 
--- Count the number of elements in the context sharing the same name --
-inductive count : Nat → Nat → ctx → Prop
-  | nil   (c : Nat) : count 0 c []
-  | next_yes  : count n m Γ → m = c.name → count (n+1) m (c :: Γ)
-  | next_no  :  count n m Γ → m ≠ c.name → count n m (c :: Γ)
-
 notation c"∈ₚ"Γ => in_context c Γ
 notation c"∉ₚ"Γ => ¬ in_context c Γ
-
-example : count 0 3 [] := by apply count.nil
-example : count 1 3 ((3∶typ.base) :: []) := by
-  apply count.next_yes
-  apply count.nil
-  rfl
-example : count 1 3 ((4∶typ.base) :: ((3∶typ.base) :: [])) := by
-  apply count.next_no
-  case a =>
-    apply count.next_yes
-    apply count.nil
-    rfl
-  case a =>
-    intro p
-    contradiction
-example : 3 ∈' ((3∶typ.base) :: []) := by
-  apply in_context.init 3
-  rfl
 
 -- Swap natural numbers --
 def swap_nats ( n m : Nat) : Nat → Nat := by
@@ -266,19 +259,28 @@ theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → valid Δ → (Γ ⊆ �
   case var n₀ A₀ Γ₀ H₂ =>
     induction Δ
     case nil => contradiction
-    case cons c₀ Δ₀ iH₀ =>
+    case cons c Γ₁ iH₀ =>
       cases H₁
       case cons H₃ H₄ =>
         cases H₃
         case head =>
           apply TR.var
-          assumption
+          exact v
         case tail H₅ =>
-          cases H₅
-          case head Γ₁ =>
-            exact (TR.ex [] c₀.name n₀ Γ₁) (TR.var (@valid_comm [] (n₀∶A₀) c₀ Γ₁ v))
-          case tail Γ₁ c₁ H₆ => sorry
-  sorry
+          sorry
+  case ex A₀ B₀ t₀ C₀ Γ₀ n₀ n₁ Δ₀ H₂ iH₀ =>
+    apply iH₀
+    induction Γ₀
+    case nil => apply subset_ex [] (n₁∶A₀) (n₀∶B₀) Δ₀ H₁
+    case cons c₀ Γ₀ iH₁ => apply subset_ex ; exact H₁
+  case abs A₀ B₀ n₀ Γ₀ t₀ H₂ iH₀ =>
+    apply TR.abs
+    sorry
+  case app A₀ B₀ Γ₀ t₀ t₁ H₂ H₃ iH₀ iH₁ =>
+    apply TR.app
+    case A => exact A₀
+    case a => exact iH₀ H₁
+    case a => exact iH₁ H₁
 
 
 

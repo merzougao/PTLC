@@ -34,16 +34,24 @@ structure ctx_elem where
   name : Nat
   type : typ
 
+
 -- Carefull, this is "\ :" and not just ":" in the following notation
 notation n"∶"t => ctx_elem.mk n t
+@[simp]
+theorem eq_ctx_elem : (c.name∶c.type) = c := rfl
 
 -- notation "ctx" => List ctx_elem
 
 inductive ctx : Type
   | nil : ctx
   | cons : ctx_elem → ctx → ctx
+
+
+
 notation:max "[]" => ctx.nil
 notation:max c"::"Γ => ctx.cons c Γ
+
+
 
 def concat : ctx → ctx → ctx := by
   intro Γ Δ
@@ -52,14 +60,66 @@ def concat : ctx → ctx → ctx := by
   case cons c₀ Γ₀ => exact c₀ :: (concat Γ₀ Δ)
 notation:max Γ"++"Δ => concat Γ Δ
 
+@[simp]
+theorem concat_empty_head {Γ : ctx}: ([] ++ Γ) = Γ := by rfl
+
+
 inductive in_list : ctx_elem → ctx → Type
   | head : in_list c (c :: L)
   | tail : in_list c L₀ → in_list c (p :: L₀)
 notation:max c"∈⋆"L => in_list c L
+notation:max c"∉⋆"L => (in_list c L) → false
 
 inductive subset : ctx → ctx → Type
   | cons : (c ∈⋆ Δ) → subset Γ Δ → subset (c :: Γ) Δ
 notation:max Γ "⊆" Δ => subset Γ Δ
+
+inductive valid : ctx → Type
+  | nil : valid []
+  | cons : valid Γ → (c ∉⋆ Γ) → valid c :: Γ
+
+theorem valid_forget : valid (c :: Γ) → valid Γ := by
+  sorry
+theorem no_dup_in_valid_ctx : valid (c :: Γ) → c ∉⋆ Γ := by
+  sorry
+theorem in_ctx_comm : (c ∈⋆ (Γ ++ c₀ :: c₁ :: Δ)) → c ∈⋆ (Γ ++ c₁ :: c₀ :: Δ) := by
+  sorry
+
+theorem valid_comm : valid (Γ ++ c₀ :: c₁ :: Δ) → valid (Γ ++ c₁ :: c₀ :: Δ) := by
+  intro H
+  induction Γ
+  case nil =>
+    simp at H
+    simp
+    apply valid.cons
+    case a =>
+      cases H
+      case cons H₁ H₂ =>
+        apply valid.cons
+        case a => exact valid_forget H₁
+        case a =>
+          intro H₃
+          apply H₂
+          apply in_list.tail
+          assumption
+    case a =>
+      intro H₁
+      cases H₁
+      case head =>
+        cases H
+        case cons H₂ H₃ => exact H₃ in_list.head
+      case tail H₂ => exact (no_dup_in_valid_ctx (valid_forget H)) H₂
+  case cons c₂ Γ₀ iH₀ =>
+    have this₀ : c₂ ∉⋆ Γ₀++c₀::c₁::Δ := no_dup_in_valid_ctx H
+    have this₁ : valid Γ₀++c₀::c₁::Δ := valid_forget H
+    apply valid.cons
+    case a => exact iH₀ this₁
+    case a =>
+      intro H₁
+      apply this₀
+      apply in_ctx_comm
+      assumption
+
 
 def fresh_var : term → Nat := by
   intro t
@@ -139,7 +199,7 @@ notation t"[" u "//" n"]" => subst n t u
 
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
-  | var : (n:Nat) → (T : typ) → (Γ : ctx) → (n ∉ₚ Γ) → TR ((n∶T) :: Γ) ($ n) T
+  | var : (n:Nat) → (T : typ) → (Γ : ctx) → (valid (n∶T) :: Γ) → TR ((n∶T) :: Γ) ($ n) T
   | ex (Γ : ctx) (y x : Nat) (Δ : ctx) : TR (Γ ++ (x∶A) :: (y∶B) :: Δ) t C →  TR (Γ ++ (y∶B) :: (x∶A) :: Δ) t C
   | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) :: Γ) t B → TR Γ (λ[n].t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ t₀{t₁} B
@@ -242,8 +302,8 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
 
 
 -- Weakening is admissible --
-theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → (Γ ⊆ Δ) → (Δ ⊢ t ∶∶ A) := by
-  intro H₀ H₁
+theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → valid Δ → (Γ ⊆ Δ) → (Δ ⊢ t ∶∶ A) := by
+  intro H₀ v H₁
   induction H₀
   case var n₀ A₀ Γ₀ H₂ =>
     induction Δ
@@ -252,6 +312,18 @@ theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → (Γ ⊆ Δ) → (Δ �
       cases H₁
       case cons H₃ H₄ =>
         cases H₃
+        case head =>
+          apply TR.var
+          assumption
+        case tail H₄ H₅ =>
+          cases H₅
+          case head Γ₁ =>
+            apply TR.ex [] c₀.name n₀ Γ₁
+            apply TR.var
+            simp
+
+
+
 
 
 

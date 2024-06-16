@@ -1,5 +1,6 @@
 import Init.Data.Nat.Basic
-import Init.Data.List.Basic
+-- import Init.Data.List.Basic
+
 
 
 -- We start with a base type and an arrow type --
@@ -36,13 +37,29 @@ structure ctx_elem where
 -- Carefull, this is "\ :" and not just ":" in the following notation
 notation n"∶"t => ctx_elem.mk n t
 
--- notation "ctx" => list ctx_elem
+-- notation "ctx" => List ctx_elem
+
 inductive ctx : Type
   | nil : ctx
-  | append : ctx_elem → ctx → ctx
+  | cons : ctx_elem → ctx → ctx
+notation:max "[]" => ctx.nil
+notation:max c"::"Γ => ctx.cons c Γ
 
-notation "[]" => ctx.nil
-notation t","Γ => ctx.append t Γ
+def concat : ctx → ctx → ctx := by
+  intro Γ Δ
+  cases Γ
+  case nil => exact Δ
+  case cons c₀ Γ₀ => exact c₀ :: (concat Γ₀ Δ)
+notation:max Γ"++"Δ => concat Γ Δ
+
+inductive in_list : ctx_elem → ctx → Type
+  | head : in_list c (c :: L)
+  | tail : in_list c L₀ → in_list c (p :: L₀)
+notation:max c"∈⋆"L => in_list c L
+
+inductive subset : ctx → ctx → Type
+  | cons : (c ∈⋆ Δ) → subset Γ Δ → subset (c :: Γ) Δ
+notation:max Γ "⊆" Δ => subset Γ Δ
 
 def fresh_var : term → Nat := by
   intro t
@@ -51,25 +68,28 @@ def fresh_var : term → Nat := by
   case abs n₀ t₀ => exact n₀ + fresh_var t₀ + 1
   case app t₀ t₁ => exact fresh_var t₀ + fresh_var t₁
 
+@[simp]
+theorem fresh_var_var_case: fresh_var ($ n) = n + 1 := rfl
+
 inductive in_context : Nat → ctx → Prop
-  | init (n : Nat) (c : ctx_elem) (Γ : ctx) : n = c.name → in_context n (c , Γ)
-  | next (n : Nat) (t : ctx_elem) (Γ : ctx) : in_context n Γ → in_context n (t , Γ)
+  | init (n : Nat) (c : ctx_elem) (Γ : ctx) : n = c.name → in_context n (c :: Γ)
+  | next (n : Nat) (t : ctx_elem) (Γ : ctx) : in_context n Γ → in_context n (t :: Γ)
 
 -- Count the number of elements in the context sharing the same name --
 inductive count : Nat → Nat → ctx → Prop
   | nil   (c : Nat) : count 0 c []
-  | next_yes  : count n m Γ → m = c.name → count (n+1) m (c ,Γ)
-  | next_no  :  count n m Γ → m ≠ c.name → count n m (c ,Γ)
+  | next_yes  : count n m Γ → m = c.name → count (n+1) m (c :: Γ)
+  | next_no  :  count n m Γ → m ≠ c.name → count n m (c :: Γ)
 
-notation c"∈"Γ => in_context c Γ
-notation c"∉"Γ => ¬ in_context c Γ
+notation c"∈ₚ"Γ => in_context c Γ
+notation c"∉ₚ"Γ => ¬ in_context c Γ
 
 example : count 0 3 [] := by apply count.nil
-example : count 1 3 ((3∶typ.base) , []) := by
+example : count 1 3 ((3∶typ.base) :: []) := by
   apply count.next_yes
   apply count.nil
   rfl
-example : count 1 3 ((4∶typ.base) , ((3∶typ.base) , [])) := by
+example : count 1 3 ((4∶typ.base) :: ((3∶typ.base) :: [])) := by
   apply count.next_no
   case a =>
     apply count.next_yes
@@ -78,7 +98,7 @@ example : count 1 3 ((4∶typ.base) , ((3∶typ.base) , [])) := by
   case a =>
     intro p
     contradiction
-example : 3 ∈ ((3∶typ.base) , []) := by
+example : 3 ∈' ((3∶typ.base) :: []) := by
   apply in_context.init 3
   rfl
 
@@ -119,15 +139,15 @@ notation t"[" u "//" n"]" => subst n t u
 
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
-  | var : (n:Nat) → (T : typ) → TR ((n∶T) , Γ) ($ n) T
-  | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) , Γ) t B → TR Γ (λ[n].t) (A -> B)
+  | var : (n:Nat) → (T : typ) → (Γ : ctx) → (n ∉ₚ Γ) → TR ((n∶T) :: Γ) ($ n) T
+  | ex (Γ : ctx) (y x : Nat) (Δ : ctx) : TR (Γ ++ (x∶A) :: (y∶B) :: Δ) t C →  TR (Γ ++ (y∶B) :: (x∶A) :: Δ) t C
+  | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) :: Γ) t B → TR Γ (λ[n].t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ t₀{t₁} B
 
 notation Γ"⊢"t"∶∶"A => TR Γ t A
 
 
-theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → (((fresh_var t∶B) , Γ) ⊢ t ∶∶ A) := by
-  sorry
+
 
 theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
                                 → (t₀ t₁ : term)
@@ -142,7 +162,7 @@ theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
     exact Sigma.mk A₀ (Sigma.mk Γ' iH₂)
   <;> intros <;> contradiction
 
-theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (c ∈ Γ) := by
+theorem in_compositve_ctx (c n : Nat) : (c ∈' ((n∶T) ::  Γ)) → (c = n) ∨ (c ∈' Γ) := by
   intro p
   cases p
   case init H =>
@@ -152,7 +172,7 @@ theorem in_compositve_ctx (c n : Nat) : (c ∈ ((n∶T) , Γ)) → (c = n) ∨ (
     apply Or.intro_right
     exact H
 
-theorem not_to_count (n : Nat ) ( Γ : ctx ) : (n ∉ Γ) → (count 0 n Γ) := by
+theorem not_to_count (n : Nat ) ( Γ : ctx ) : (n ∉' Γ) → (count 0 n Γ) := by
   intro d₀
   induction Γ
   case nil =>
@@ -192,7 +212,7 @@ theorem count_to_not (k n : Nat) (Γ : ctx): (count k n Γ) → (k = 0) → (n �
     apply Nat.succ_ne_zero 0
     apply this₂.right
 
-theorem in_extended_ctx (n : Nat) (Γ : ctx) (c : ctx_elem): (n ∈ Γ) → (n ∈ (c , Γ)) := by
+theorem in_extended_ctx (n : Nat) (Γ : ctx) (c : ctx_elem): (n ∈' Γ) → (n ∈' (c :: Γ)) := by
   intro p
   apply in_context.next
   assumption
@@ -200,7 +220,7 @@ theorem in_extended_ctx (n : Nat) (Γ : ctx) (c : ctx_elem): (n ∈ Γ) → (n �
 -- The contexts are valid under the typing rules --
 theorem no_duplicates_in_ctx :    (c : ctx_elem)
                                 → (Γ : ctx)
-                                → (c.name ∈ Γ)
+                                → (c.name ∈' Γ)
                                 → (Γ ⊢ t ∶∶ A)
                                 → (count 1 c.name Γ) := by
   intros c Γ p d
@@ -211,8 +231,8 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
     case a.init m => exact m
     case a.next q₀  => contradiction
   case abs A₀ _ n₀ Γ₀ _ _ iH₁ =>
-    have this₀ : (c.name∈(n₀∶A₀),Γ₀) :=  in_context.next c.name (n₀∶A₀) Γ₀ p
-    have this₁ : count 1 c.name ((n₀∶A₀),Γ₀) := iH₁ this₀
+    have this₀ : (c.name∈(n₀∶A₀) :: Γ₀) :=  in_context.next c.name (n₀∶A₀) Γ₀ p
+    have this₁ : count 1 c.name ((n₀∶A₀) :: Γ₀) := iH₁ this₀
     cases this₁
     case next_yes K₀ K₁ =>
       have this₂ : c.name ∉ Γ₀ := count_to_not 0 c.name Γ₀ K₁ rfl
@@ -222,7 +242,26 @@ theorem no_duplicates_in_ctx :    (c : ctx_elem)
 
 
 -- Weakening is admissible --
--- theorem weakening :
+theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → (Γ ⊆ Δ) → (Δ ⊢ t ∶∶ A) := by
+  intro H₀ H₁
+  induction H₀
+  case var n₀ A₀ Γ₀ H₂ =>
+    induction Δ
+    case nil => contradiction
+    case cons c₀ Δ₀ iH₀ =>
+      cases H₁
+      case cons H₃ H₄ =>
+        cases H₃
+
+
+
+
+
+
+
+
+
+
 
 
 -- We define the α equivalence here, two terms are equivalent up to renaming of the bound variables --

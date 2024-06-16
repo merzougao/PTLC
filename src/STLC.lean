@@ -79,11 +79,38 @@ inductive valid : ctx → Type
   | cons : valid Γ → (c ∉⋆ Γ) → valid c :: Γ
 
 theorem valid_forget : valid (c :: Γ) → valid Γ := by
-  sorry
+  intro H
+  cases H
+  assumption
+
 theorem no_dup_in_valid_ctx : valid (c :: Γ) → c ∉⋆ Γ := by
-  sorry
+  intro H₀ H₁
+  cases H₀
+  case cons H₂ H₃ =>
+    apply H₃
+    assumption
+
 theorem in_ctx_comm : (c ∈⋆ (Γ ++ c₀ :: c₁ :: Δ)) → c ∈⋆ (Γ ++ c₁ :: c₀ :: Δ) := by
-  sorry
+  intro H
+  induction Γ
+  case nil =>
+    simp
+    simp at H
+    cases H
+    case head => apply in_list.tail in_list.head
+    case tail H₁ =>
+      cases H₁
+      case head => apply in_list.head
+      case tail H₂ =>
+        apply in_list.tail ; apply in_list.tail
+        assumption
+  case cons c₂ Γ₀ iH₀ =>
+    cases H
+    case head => apply in_list.head
+    case tail H₂ =>
+      apply in_list.tail
+      exact iH₀ H₂
+
 
 theorem valid_comm : valid (Γ ++ c₀ :: c₁ :: Δ) → valid (Γ ++ c₁ :: c₀ :: Δ) := by
   intro H

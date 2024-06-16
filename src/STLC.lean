@@ -74,50 +74,63 @@ inductive subset : ctx → ctx → Type
   | cons : (c ∈⋆ Δ) → subset Γ Δ → subset (c :: Γ) Δ
 notation:max Γ "⊆" Δ => subset Γ Δ
 
+/-  Inductive type inhabited whenever Γ : ctx is valid
+    i.e does not contain any duplicates in the strong sense (context elements not just variable
+    name )
+-/
 inductive valid : ctx → Type
   | nil : valid []
   | cons : valid Γ → (c ∉⋆ Γ) → valid c :: Γ
 
+/-  Lemma for valid_comm
+    Invert the constructor of valid context. Show that if c::Γ is a valid context,
+    Then Γ was valid all along
+-/
 theorem valid_forget : valid (c :: Γ) → valid Γ := by
   intro H
   cases H
   assumption
 
+/-  Lemma for valid_comm
+    Invert the constructor of valid context. Show that if c::Γ is a valid context,
+    Then c is not present in Γ
+-/
 theorem no_dup_in_valid_ctx : valid (c :: Γ) → c ∉⋆ Γ := by
-  intro H₀ H₁
+  intro H₀
   cases H₀
-  case cons H₂ H₃ =>
-    apply H₃
-    assumption
+  assumption
 
+/-  Lemma for valid_comm
+    Show that if an element c is in a context Γ then it remains there whenever we permute
+    entries in Γ
+-/
 theorem in_ctx_comm : (c ∈⋆ (Γ ++ c₀ :: c₁ :: Δ)) → c ∈⋆ (Γ ++ c₁ :: c₀ :: Δ) := by
   intro H
   induction Γ
   case nil =>
-    simp
-    simp at H
+    simp ; simp at H
     cases H
-    case head => apply in_list.tail in_list.head
+    case head => exact in_list.tail in_list.head
     case tail H₁ =>
       cases H₁
       case head => apply in_list.head
-      case tail H₂ =>
-        apply in_list.tail ; apply in_list.tail
-        assumption
+      case tail H₂ => exact in_list.tail (in_list.tail H₂)
   case cons c₂ Γ₀ iH₀ =>
     cases H
     case head => apply in_list.head
-    case tail H₂ =>
-      apply in_list.tail
-      exact iH₀ H₂
+    case tail H₂ => exact in_list.tail (iH₀ H₂)
 
 
-theorem valid_comm : valid (Γ ++ c₀ :: c₁ :: Δ) → valid (Γ ++ c₁ :: c₀ :: Δ) := by
+/-  Show that a context remains valid when an exchange is performed.
+    This amount to show that if a context has no duplicates, then permuting two elements
+    preserves this property
+-/
+theorem valid_comm {Γ : ctx} {c₁ c₀ : ctx_elem} {Δ : ctx}:
+                    valid (Γ ++ c₀ :: c₁ :: Δ) → valid (Γ ++ c₁ :: c₀ :: Δ) := by
   intro H
   induction Γ
   case nil =>
-    simp at H
-    simp
+    simp at H ; simp
     apply valid.cons
     case a =>
       cases H
@@ -126,9 +139,7 @@ theorem valid_comm : valid (Γ ++ c₀ :: c₁ :: Δ) → valid (Γ ++ c₁ :: c
         case a => exact valid_forget H₁
         case a =>
           intro H₃
-          apply H₂
-          apply in_list.tail
-          assumption
+          exact H₂ (in_list.tail H₃)
     case a =>
       intro H₁
       cases H₁
@@ -137,15 +148,12 @@ theorem valid_comm : valid (Γ ++ c₀ :: c₁ :: Δ) → valid (Γ ++ c₁ :: c
         case cons H₂ H₃ => exact H₃ in_list.head
       case tail H₂ => exact (no_dup_in_valid_ctx (valid_forget H)) H₂
   case cons c₂ Γ₀ iH₀ =>
-    have this₀ : c₂ ∉⋆ Γ₀++c₀::c₁::Δ := no_dup_in_valid_ctx H
-    have this₁ : valid Γ₀++c₀::c₁::Δ := valid_forget H
     apply valid.cons
-    case a => exact iH₀ this₁
-    case a =>
-      intro H₁
-      apply this₀
-      apply in_ctx_comm
-      assumption
+    exact iH₀ (valid_forget H)
+    intro H₁ ; exact (no_dup_in_valid_ctx H) (in_ctx_comm H₁)
+
+
+
 
 
 def fresh_var : term → Nat := by
@@ -226,7 +234,7 @@ notation t"[" u "//" n"]" => subst n t u
 
 -- Typing relation --
 inductive TR : ctx → term → typ → Type
-  | var : (n:Nat) → (T : typ) → (Γ : ctx) → (valid (n∶T) :: Γ) → TR ((n∶T) :: Γ) ($ n) T
+  | var : (valid (n∶T) :: Γ) → TR ((n∶T) :: Γ) ($ n) T
   | ex (Γ : ctx) (y x : Nat) (Δ : ctx) : TR (Γ ++ (x∶A) :: (y∶B) :: Δ) t C →  TR (Γ ++ (y∶B) :: (x∶A) :: Δ) t C
   | abs : (A B : typ) → (n:Nat) → (Γ : ctx ) → (t : term) → TR ((n∶A) :: Γ) t B → TR Γ (λ[n].t) (A -> B)
   | app : (A B : typ) → (Γ : ctx) → (t₀ t₁ : term) →  TR Γ t₀ (A -> B) → TR Γ t₁ A → TR Γ t₀{t₁} B
@@ -249,83 +257,6 @@ theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
     exact Sigma.mk A₀ (Sigma.mk Γ' iH₂)
   <;> intros <;> contradiction
 
-theorem in_compositve_ctx (c n : Nat) : (c ∈' ((n∶T) ::  Γ)) → (c = n) ∨ (c ∈' Γ) := by
-  intro p
-  cases p
-  case init H =>
-    apply Or.intro_left
-    exact H
-  case next H =>
-    apply Or.intro_right
-    exact H
-
-theorem not_to_count (n : Nat ) ( Γ : ctx ) : (n ∉' Γ) → (count 0 n Γ) := by
-  intro d₀
-  induction Γ
-  case nil =>
-    apply count.nil
-  case append c₀ Γ₀ iH₀ =>
-    have : n ≠ c₀.name := by
-      intro p
-      apply d₀
-      apply in_context.init
-      assumption
-    have this₀ : n ∉ Γ₀ := by
-      intro p
-      apply d₀
-      apply in_context.next
-      assumption
-    have this₁ : count 0 n Γ₀ := iH₀ this₀
-    apply count.next_no
-    assumption
-    assumption
-
-theorem count_to_not (k n : Nat) (Γ : ctx): (count k n Γ) → (k = 0) → (n ∉ Γ) := by
-  intro d d₀
-  induction d
-  case nil =>
-    intro p
-    contradiction
-  case next_no k₀ k₁ Γ₀ c₀ _ H₁ H₂ =>
-    intro p
-    cases p
-    case init H₃ => contradiction
-    case next H₃ =>
-      have : ¬ k₁ ∈ Γ₀ := H₂ d₀
-      exact this H₃
-  case next_yes k₀ k₁ Γ₀ c₀ _ _ _ =>
-    intro
-    have this₂ : k₀ = 0 ∧ 1 = 0 := (@Nat.add_eq_zero_iff k₀ 1).mp d₀
-    apply Nat.succ_ne_zero 0
-    apply this₂.right
-
-theorem in_extended_ctx (n : Nat) (Γ : ctx) (c : ctx_elem): (n ∈' Γ) → (n ∈' (c :: Γ)) := by
-  intro p
-  apply in_context.next
-  assumption
-
--- The contexts are valid under the typing rules --
-theorem no_duplicates_in_ctx :    (c : ctx_elem)
-                                → (Γ : ctx)
-                                → (c.name ∈' Γ)
-                                → (Γ ⊢ t ∶∶ A)
-                                → (count 1 c.name Γ) := by
-  intros c Γ p d
-  induction d
-  case var n T =>
-    apply count.next_yes ; apply count.nil
-    cases p
-    case a.init m => exact m
-    case a.next q₀  => contradiction
-  case abs A₀ _ n₀ Γ₀ _ _ iH₁ =>
-    have this₀ : (c.name∈(n₀∶A₀) :: Γ₀) :=  in_context.next c.name (n₀∶A₀) Γ₀ p
-    have this₁ : count 1 c.name ((n₀∶A₀) :: Γ₀) := iH₁ this₀
-    cases this₁
-    case next_yes K₀ K₁ =>
-      have this₂ : c.name ∉ Γ₀ := count_to_not 0 c.name Γ₀ K₁ rfl
-      contradiction
-    case next_no K₀ K₁ => assumption
-  case app _ B₀ _ _ _ _ _ iH₃ => exact iH₃ p
 
 
 -- Weakening is admissible --
@@ -342,14 +273,12 @@ theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → valid Δ → (Γ ⊆ �
         case head =>
           apply TR.var
           assumption
-        case tail H₄ H₅ =>
+        case tail H₅ =>
           cases H₅
           case head Γ₁ =>
-            apply TR.ex [] c₀.name n₀ Γ₁
-            apply TR.var
-            simp
-
-
+            exact (TR.ex [] c₀.name n₀ Γ₁) (TR.var (@valid_comm [] (n₀∶A₀) c₀ Γ₁ v))
+          case tail Γ₁ c₁ H₆ => sorry
+  sorry
 
 
 

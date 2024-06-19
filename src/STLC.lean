@@ -60,7 +60,7 @@ def concat : ctx → ctx → ctx := by
 notation:max Γ"++"Δ => concat Γ Δ
 
 @[simp]
-theorem concat_empty_middle {Γ : ctx}: Γ ++ c :: [] ++ Δ = Γ ++ c :: Δ := by rfl
+theorem concat_empty_middle {Γ : ctx} {c : ctx_elem}: ((c :: []) ++ Γ) = (c :: Γ) := by rfl
 @[simp]
 theorem concat_empty_head {Γ : ctx}: ([] ++ Γ) = Γ := by rfl
 @[simp]
@@ -71,6 +71,20 @@ theorem concat_empty_tail {Γ : ctx}: (Γ ++ []) = Γ := by
     have : ((c::Γ₀)++[]) = (c::(Γ₀++[])) := by rfl
     rw [this]
     rw [iH₀]
+
+theorem concat_assoc_elem : ((c::Γ) ++ Δ) = (c ::(Γ ++ Δ)) := by rfl
+
+theorem concat_assoc :(Γ Δ Λ : ctx) → (Γ ++ Δ ++ Λ) = ((Γ ++ Δ ) ++ Λ) := by
+  intro Γ
+  induction Γ
+  case nil => simp
+  case cons c₀ Γ₀ iH₀ =>
+    intro Δ Λ
+    have : ((c₀::Γ₀)++Δ++Λ) = (c₀::(Γ₀++Δ++Λ)) := concat_assoc_elem
+    rw [this]
+    have this₀ : (Γ₀++Δ++Λ) = (Γ₀++Δ)++Λ := iH₀ Δ Λ
+    rw [this₀]
+    rfl
 
 
 
@@ -276,7 +290,13 @@ theorem ctx_elem_ex :   (Γ Δ Λ : ctx) → (c : ctx_elem)
     rw [this]
     apply iH₀ (Δ++ c₀::[]) Λ c
     --⊢ ((Δ++c₀::[])++c::Γ₀++Λ)⊢t∶∶A
+    have this₁ : ((Δ++c₀::[])++c::Γ₀++Λ) = (Δ++((c₀::[])++c::Γ₀++Λ)) := by
+      --concat_assoc
+      sorry
+    rw [this₁]
     apply TR.ex Δ c₀.name c.name (Γ₀++Λ)
+    simp
+    exact H
 
 
 

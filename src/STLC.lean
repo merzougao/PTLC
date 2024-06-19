@@ -86,6 +86,20 @@ theorem concat_assoc :(Γ Δ Λ : ctx) → (Γ ++ Δ ++ Λ) = ((Γ ++ Δ ) ++ Λ
     rw [this₀]
     rfl
 
+theorem concat_assoc_full :(Δ₀ Γ Δ₁ Λ : ctx) → (Γ ++ Δ₀ ++ Δ₁ ++ Λ) = (Γ ++ (Δ₀ ++ Δ₁) ++ Λ) := by
+  intro Δ₀
+  induction Δ₀
+  case nil =>
+    intro Γ Δ₁ Λ
+    simp
+  case cons c₀ Δ₀₀ iH₀ =>
+    intro Γ Δ₁ Λ
+    have : ((c₀::Δ₀₀)++Δ₁++Λ) = (c₀::(Δ₀₀++Δ₁++Λ)) := concat_assoc_elem
+    rw [this]
+    sorry
+
+
+
 
 
 inductive in_list : ctx_elem → ctx → Type
@@ -274,6 +288,10 @@ theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
     exact Sigma.mk A₀ (Sigma.mk Γ' iH₂)
   <;> intros <;> contradiction
 
+/-  This Lemma proves that if an element is in a valid context, then the deduction remain
+    unchanged when we swap the element with a subcontext, ie Δ,c,Γ,Λ ⊢ t iff Δ,Γ,c,Λ ⊢ t
+    This is needed to prove the more general statement that any two subcontext commute
+-/
 theorem ctx_elem_ex :   (Γ Δ Λ : ctx) → (c : ctx_elem)
                         → ((Δ ++ (c::(Γ ++ Λ))) ⊢ t ∶∶ A) → (Δ ++ Γ ++ c :: Λ) ⊢ t ∶∶ A := by
   intro Γ
@@ -283,21 +301,48 @@ theorem ctx_elem_ex :   (Γ Δ Λ : ctx) → (c : ctx_elem)
     assumption
   case cons c₀ Γ₀ iH₀ =>
     intro Δ Λ c H
-    -- H : (Δ++c::(c₀::Γ₀)++Λ)⊢t∶∶A
-
-    --iH₀ : (Δ Λ : ctx) → (c : ctx_elem) → ((Δ++c::Γ₀++Λ)⊢t∶∶A) → (Δ++Γ₀++c::Λ)⊢t∶∶A
-    have : (Δ++(c₀::Γ₀)++c::Λ) = ((Δ++c₀::[])++Γ₀++c::Λ) := sorry
+    -- We need to take care of the associativity of the context before apply the IH
+    have this₀: ((c₀::[])++Γ₀++c::Λ) = ((c₀::Γ₀)++c::Λ) := by apply concat_empty_middle
+    have this : (Δ++(c₀::Γ₀)++c::Λ) = ((Δ++c₀::[])++Γ₀++c::Λ) := by
+      rw[←this₀]
+      apply concat_assoc
     rw [this]
+    -- Induction Hypothesis
     apply iH₀ (Δ++ c₀::[]) Λ c
-    --⊢ ((Δ++c₀::[])++c::Γ₀++Λ)⊢t∶∶A
-    have this₁ : ((Δ++c₀::[])++c::Γ₀++Λ) = (Δ++((c₀::[])++c::Γ₀++Λ)) := by
-      --concat_assoc
-      sorry
-    rw [this₁]
+    -- We need to use the exchange deduction rule here
+    have this₁ : (Δ++((c₀::[])++c::Γ₀++Λ)) = ((Δ++c₀::[])++c::Γ₀++Λ) := by apply concat_assoc
+    rw [←this₁]
     apply TR.ex Δ c₀.name c.name (Γ₀++Λ)
-    simp
     exact H
 
+theorem ctx_ex : (Δ₀ Δ₁ Γ Λ : ctx) → ((Γ ++ Δ₀ ++ Δ₁ ++ Λ) ⊢ t ∶∶ A) → ((Γ ++ Δ₁ ++ Δ₀ ++ Λ) ⊢ t ∶∶ A) := by
+  intro Δ₀
+  induction Δ₀
+  case nil =>
+    intro Δ₁ Γ Λ H
+    assumption
+  case cons c₀ Δ₀₀ iH₀ =>
+    intro Δ₁ Γ Λ H
+    have this₀ : (c₀::[]++Δ₀₀++Λ) = ((c₀::Δ₀₀)++Λ) := by
+      apply concat_assoc (c₀::[]) Δ₀₀ Λ
+    rw [←this₀]
+    have this₁ : (Γ++(Δ₁++c₀::[])++Δ₀₀++Λ)⊢t∶∶A := by
+      apply iH₀ (Δ₁++c₀::[]) Γ Λ
+      have this₂ :   (Γ++Δ₀₀++(Δ₁++c₀::[])++Λ)= (Γ++Δ₀₀)++(Δ₁++c₀::[])++Λ := by sorry
+      have this₃ : ((Γ++Δ₀₀)++(Δ₁++c₀::[])++Λ) = ((Γ++Δ₀₀)++Δ₁++c₀::[]++Λ) := by sorry
+      rw [this₂]
+      rw [this₃]
+      apply ctx_elem_ex Δ₁ (Γ ++ Δ₀₀) Λ c₀
+      have this₄ : ((Γ++Δ₀₀)++c₀::Δ₁++Λ) = (Γ++Δ₀₀++c₀::Δ₁++Λ) := by sorry
+      rw [this₄]
+      apply ctx_elem_ex Δ₀₀ Γ (Δ₁++Λ) c₀
+      have this₅ : (Γ++c₀::Δ₀₀++Δ₁++Λ) = (Γ++(c₀::Δ₀₀)++Δ₁++Λ) := by sorry
+      rw [this₅]
+      exact H
+    have this₆ : (Γ++(Δ₁++c₀::[])++Δ₀₀++Λ) = (Γ++Δ₁++c₀::Δ₀₀++Λ) := by sorry
+    simp
+    rw[← this₆]
+    exact this₁
 
 
 

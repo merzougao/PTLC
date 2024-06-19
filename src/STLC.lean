@@ -52,7 +52,6 @@ notation:max "[]" => ctx.nil
 notation:max c"::"Γ => ctx.cons c Γ
 
 
-
 def concat : ctx → ctx → ctx := by
   intro Γ Δ
   cases Γ
@@ -61,7 +60,18 @@ def concat : ctx → ctx → ctx := by
 notation:max Γ"++"Δ => concat Γ Δ
 
 @[simp]
+theorem concat_empty_middle {Γ : ctx}: Γ ++ c :: [] ++ Δ = Γ ++ c :: Δ := by rfl
+@[simp]
 theorem concat_empty_head {Γ : ctx}: ([] ++ Γ) = Γ := by rfl
+@[simp]
+theorem concat_empty_tail {Γ : ctx}: (Γ ++ []) = Γ := by
+  induction Γ
+  case nil => simp
+  case cons c Γ₀ iH₀ =>
+    have : ((c::Γ₀)++[]) = (c::(Γ₀++[])) := by rfl
+    rw [this]
+    rw [iH₀]
+
 
 
 inductive in_list : ctx_elem → ctx → Type
@@ -250,6 +260,34 @@ theorem app_type_inference :      (Γ ⊢ v ∶∶ A)
     exact Sigma.mk A₀ (Sigma.mk Γ' iH₂)
   <;> intros <;> contradiction
 
+theorem ctx_elem_ex :   (Γ Δ Λ : ctx) → (c : ctx_elem)
+                        → ((Δ ++ (c::(Γ ++ Λ))) ⊢ t ∶∶ A) → (Δ ++ Γ ++ c :: Λ) ⊢ t ∶∶ A := by
+  intro Γ
+  induction Γ
+  case nil =>
+    intro Δ Λ c H
+    assumption
+  case cons c₀ Γ₀ iH₀ =>
+    intro Δ Λ c H
+    -- H : (Δ++c::(c₀::Γ₀)++Λ)⊢t∶∶A
+
+    --iH₀ : (Δ Λ : ctx) → (c : ctx_elem) → ((Δ++c::Γ₀++Λ)⊢t∶∶A) → (Δ++Γ₀++c::Λ)⊢t∶∶A
+    have : (Δ++(c₀::Γ₀)++c::Λ) = ((Δ++c₀::[])++Γ₀++c::Λ) := sorry
+    rw [this]
+    apply iH₀ (Δ++ c₀::[]) Λ c
+    --⊢ ((Δ++c₀::[])++c::Γ₀++Λ)⊢t∶∶A
+    apply TR.ex Δ c₀.name c.name (Γ₀++Λ)
+
+
+
+
+
+
+
+
+
+
+
 
 
 -- Weakening is admissible --
@@ -267,7 +305,16 @@ theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → valid Δ → (Γ ⊆ �
           apply TR.var
           exact v
         case tail H₅ =>
-          sorry
+          induction H₅
+          case head Γ₁ =>
+            apply TR.ex [] c.name n₀ Γ₁
+            apply TR.var
+            simp
+            apply @valid_comm [] (n₀∶A₀) c Γ₁
+            exact v
+          case tail Γ₂ c₁ H₆ iH₁ =>
+            sorry
+
   case ex A₀ B₀ t₀ C₀ Γ₀ n₀ n₁ Δ₀ H₂ iH₀ =>
     apply iH₀
     induction Γ₀
@@ -276,6 +323,7 @@ theorem weakening_is_admissible : (Γ ⊢ t ∶∶ A) → valid Δ → (Γ ⊆ �
   case abs A₀ B₀ n₀ Γ₀ t₀ H₂ iH₀ =>
     apply TR.abs
     sorry
+
   case app A₀ B₀ Γ₀ t₀ t₁ H₂ H₃ iH₀ iH₁ =>
     apply TR.app
     case A => exact A₀
